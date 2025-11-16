@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tailor Pro iOS</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tailor Pro">
+<link rel="apple-touch-icon" href="https://i.imgur.com/6Y1Fj9x.png">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+body { font-family:'Roboto',sans-serif; background:#0f0f1a; color:#e0e0e0; margin:0; padding:0; }
+.theme-card { background:#1a1a2e; border-radius:12px; box-shadow:0 5px 15px rgba(0,0,0,0.5); padding:1rem; margin:1rem; }
+.header-banner { display:flex; flex-wrap:wrap; justify-content:space-around; align-items:center; margin-bottom:1rem; }
+.stat-card { color:#fff; padding:1rem; border-radius:12px; flex:1; min-width:140px; margin:5px; text-align:center; font-weight:600; }
+.stat-total { background:linear-gradient(135deg,#1DB954,#1ED760); }
+.stat-sales { background:linear-gradient(135deg,#ff416c,#ff4b2b); }
+.stat-completed { background:linear-gradient(135deg,#00c6ff,#0072ff); }
+.stat-pending { background:linear-gradient(135deg,#f7971e,#ffd200); }
+input, select, textarea { border:1px solid #555; border-radius:8px; padding:6px; font-weight:500; background:#0f0f1a; color:white; width:100%; }
+table { border-collapse: collapse; width:100%; }
+table th, table td { border-bottom:1px solid #555; padding:8px; text-align:left; font-weight:500; }
+button:hover { opacity:0.85; cursor:pointer; }
+.invoice-table td, .invoice-table th { border:1px solid #555; padding:6px; }
+</style>
+</head>
+<body>
+
+<!-- Dashboard -->
+<div class="header-banner">
+<div class="stat-card stat-total" id="totalClients">Total Clients: 0</div>
+<div class="stat-card stat-sales" id="totalSales">Total Sales: 0 KD</div>
+<div class="stat-card stat-completed" id="completedOrders">Completed Orders: 0</div>
+<div class="stat-card stat-pending" id="pendingOrders">Pending Orders: 0</div>
+</div>
+
+<!-- Shop Header -->
+<div class="theme-card">
+<h1 class="text-2xl font-bold text-purple-400">MEN TAILOR & TEXTILE - JAMAL AL-SHUWAIKH</h1>
+<p class="text-green-400">Kuwait – Comm. Area No. 9 – Mariam Comp – Basement – Shop No. 8 | WhatsApp: +918000484520</p>
+</div>
+
+<!-- Add/Edit Client -->
+<div class="theme-card">
+<h2 class="text-purple-400 font-bold mb-3">Add / Edit Clients</h2>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+<div><label>Name</label><input id="clientName" placeholder="Name" /></div>
+<div><label>Phone(s)</label><input id="clientPhone" placeholder="Phone(s) comma separated" /></div>
+<div><label>Book No.</label><input id="clientBook" placeholder="Book No." /></div>
+</div>
+<div class="mt-3 flex justify-center gap-3">
+<button id="addClient" class="px-6 py-3 rounded bg-purple-600 font-bold">Add / Save Client</button>
+</div>
+<div class="mt-2 flex justify-start gap-2">
+<button id="exportData" class="bg-green-600 text-white px-4 py-2 rounded">Export JSON</button>
+<input type="file" id="importFile" class="px-2 py-1 border rounded" />
+</div>
+</div>
+
+<!-- Search Client -->
+<div class="theme-card">
+<h2 class="text-purple-400 font-bold mb-3">Search Clients</h2>
+<input id="searchClient" placeholder="Search by Name, Phone, Book No." class="mb-2"/>
+<table class="w-full text-sm" id="clientTable">
+<thead><tr><th>Select</th><th>Sr.</th><th>Name</th><th>Phone</th><th>Book No.</th></tr></thead>
+<tbody></tbody>
+</table>
+</div>
+
+<!-- Invoice Section -->
+<div class="theme-card" id="invoiceSectionContainer">
+<h2 class="text-purple-400 font-bold mb-3">Invoice / Bill</h2>
+<div id="invoiceSection"></div>
+</div>
+
+<footer class="mt-4 text-center text-gray-400">MEN TAILOR & TEXTILE - JAMAL AL-SHUWAIKH | Kuwait – Comm. Area No. 9 – Mariam Comp – Basement – Shop No. 8</footer>
+
+<script>
+// Database
+let databaseName = 'tailorDatabase_iOS';
+let clients = localStorage.getItem(databaseName) ? JSON.parse(localStorage.getItem(databaseName)) : [];
+
+// Render Dashboard
+const renderDashboard = () => {
+    let total = clients.length, sales = 0, completed = 0, pending = 0;
+    clients.forEach(c => {
+        if(c.invoice){
+            c.invoice.forEach(it => { sales += parseFloat(it.price||0) * parseInt(it.qty||0) });
+            completed += c.completed?1:0;
+            pending += c.completed?0:1;
+        }
+    });
+    document.getElementById('totalClients').textContent = 'Total Clients: '+total;
+    document.getElementById('totalSales').textContent = 'Total Sales: '+sales.toFixed(2)+' KD';
+    document.getElementById('completedOrders').textContent = 'Completed Orders: '+completed;
+    document.getElementById('pendingOrders').textContent = 'Pending Orders: '+pending;
+};
+
+// Render Client Table
+const renderTable = () => {
+    const tbody = document.querySelector('#clientTable tbody');
+    tbody.innerHTML='';
+    const filter = document.getElementById('searchClient').value.toLowerCase();
+    clients.forEach((c,i) => {
+        if(!filter || (c.name.toLowerCase().includes(filter) || c.phone.toLowerCase().includes(filter) || c.book.toLowerCase().includes(filter))){
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td><button class='bg-blue-600 px-2 py-1 rounded text-white' onclick='generateInvoice(${i})'>Select</button></td><td>${i+1}</td><td>${c.name}</td><td>${c.phone}</td><td>${c.book}</td>`;
+            tbody.appendChild(tr);
+        }
+    });
+};
+
+// Add Client
+document.getElementById('addClient').addEventListener('click', () => {
+    const name = document.getElementById('clientName').value.trim();
+    const phone = document.getElementById('clientPhone').value.trim();
+    const book = document.getElementById('clientBook').value.trim();
+    if(!name || !phone || !book){ alert('Fill all fields'); return; }
+    const client = { name, phone, book, invoice: [], completed:false };
+    clients.push(client);
+    localStorage.setItem(databaseName, JSON.stringify(clients));
+    ['clientName','clientPhone','clientBook'].forEach(id => document.getElementById(id).value='');
+    renderTable(); renderDashboard();
+});
+
+// Search
+document.getElementById('searchClient').addEventListener('input', ()=>{ renderTable(); });
+
+// Export / Import
+document.getElementById('exportData').addEventListener('click', ()=> {
+    const dataStr='data:text/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(clients));
+    const dlAnchor=document.createElement('a');
+    dlAnchor.setAttribute('href',dataStr);
+    dlAnchor.setAttribute('download','clients_iOS.json');
+    dlAnchor.click();
+});
+document.getElementById('importFile').addEventListener('change', (evt)=>{
+    const file=evt.target.files[0];
+    if(!file) return;
+    const reader=new FileReader();
+    reader.onload=function(e){
+        clients=JSON.parse(e.target.result);
+        localStorage.setItem(databaseName, JSON.stringify(clients));
+        renderTable(); renderDashboard();
+    };
+    reader.readAsText(file);
+});
+
+// Generate Invoice (basic)
+function generateInvoice(index){
+    const c=clients[index];
+    const section=document.getElementById('invoiceSection');
+    section.innerHTML='';
+    const currentDate = new Date();
+    const dateTimeStr = currentDate.toLocaleString();
+    const header = document.createElement('div');
+    header.innerHTML=`<h2 class="text-xl font-bold text-purple-400">MEN TAILOR & TEXTILE</h2>
+<p class="text-green-400">JAMAL AL-SHUWAIKH | Kuwait – Comm. Area No. 9 – Mariam Comp – Basement – Shop No. 8</p>
+<p>Date / Time: ${dateTimeStr}</p><hr/>`;
+    section.appendChild(header);
+    // Invoice placeholder
+    const invHTML = document.createElement('div');
+    invHTML.innerHTML = `<p><strong>Client:</strong> ${c.name} | <strong>Phone:</strong> ${c.phone}</p>
+<table class="invoice-table"><thead><tr><th>Item</th><th>Qty</th><th>Price</th></tr></thead><tbody>
+<tr><td>Dress</td><td>4</td><td>92 KD</td></tr>
+<tr><td>Kurta</td><td>3</td><td>102 KD</td></tr>
+</tbody></table>
+<p>Tax: 5% Discount: 2%</p>
+<p><strong>Total: 199.63 KD</strong></p>
+<p>Thank you! Visit Again!</p>
+<canvas id="qrCode"></canvas>
+<button onclick="printInvoice()" class="mt-2 px-4 py-2 bg-green-600 rounded">Print / PDF</button>
+<button onclick="sendWhatsApp()" class="mt-2 px-4 py-2 bg-blue-600 rounded">Send WhatsApp</button>`;
+    section.appendChild(invHTML);
+    // Generate QR
+    const qr = new QRious({ element: document.getElementById('qrCode'), value: `Invoice:${c.name}|Total:199.63 KD|Date:${dateTimeStr}`, size:120 });
+}
+
+// Print PDF
+function printInvoice(){ window.print(); }
+
+// WhatsApp Send
+function sendWhatsApp(){
+    const text = document.getElementById('invoiceSection').innerText;
+    const link = 'https://wa.me/?text='+encodeURIComponent(text);
+    window.open(link,'_blank');
+}
+
+renderTable(); renderDashboard();
+</script>
+</body>
+</html>
